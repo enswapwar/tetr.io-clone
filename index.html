@@ -3,46 +3,45 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Tetr.io-like — Ultimate Single Player</title>
+  <title>Tetr.io-ish — Single Player</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app">
     <header>
-      <h1>TETR.IO —-ish (single-player)</h1>
+      <h1>TETR.IO —ish (single-player)</h1>
       <div class="info">
         <div>Score: <span id="score">0</span></div>
         <div>Lines: <span id="lines">0</span></div>
         <div>Level: <span id="level">1</span></div>
-        <div>B2B: <span id="b2b">0</span></div>
-        <div>Combo: <span id="combo">0</span></div>
       </div>
     </header>
 
     <main>
-      <section class="left">
-        <canvas id="board" width="300" height="600"></canvas>
+      <!-- Hold を左に移動 -->
+      <aside class="left-panel">
+        <div class="box hold-box">
+          <div class="label">Hold</div>
+          <canvas id="hold" width="120" height="120"></canvas>
+          <div class="meta">
+            <div>B2B: <span id="b2b">0</span></div>
+            <div>T-spin: <span id="tspin">0</span></div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="center-panel">
+        <canvas id="board" width="300" height="600" tabindex="0"></canvas>
         <div class="controls-hint">
           ← →: move / ↓: soft / Space: hard / Z: left / X: right / A: 180 / Shift/C: hold
         </div>
       </section>
 
-      <aside class="right">
-        <div class="box">
-          <div class="label">Hold</div>
-          <canvas id="hold" width="120" height="120"></canvas>
-        </div>
-
+      <aside class="right-panel">
         <div class="box">
           <div class="label">Next</div>
           <div id="next-list"></div>
         </div>
-
-        <div class="box small">
-          <div class="label">Stats</div>
-          <div id="stats">B2B Bonus / T-spin tracking / DAS/ARR: enabled</div>
-        </div>
-
         <div class="box small">
           <button id="restart">Restart</button>
         </div>
@@ -50,7 +49,7 @@
     </main>
 
     <footer>
-      <small>Built to be close to tetr.io single-player: SRS rotations, wall-kicks, ghost, 7-bag, DAS/ARR, lock delay, B2B, T-spin, combo, scoring.</small>
+      <small>20x10 visible, 7-bag, SRS-ish, DAS/ARR, ghost, hold, next (1cm each).</small>
     </footer>
   </div>
 
