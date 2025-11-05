@@ -18,7 +18,7 @@
     </header>
 
     <main>
-      <!-- Hold を左に移動 -->
+      <!-- Hold左配置 -->
       <aside class="left-panel">
         <div class="box hold-box">
           <div class="label">Hold</div>
@@ -27,20 +27,29 @@
             <div>B2B: <span id="b2b">0</span></div>
             <div>T-spin: <span id="tspin">0</span></div>
           </div>
+          <div id="tspin-message"></div>
         </div>
       </aside>
 
+      <!-- メインゲーム領域 -->
       <section class="center-panel">
-        <canvas id="board" width="300" height="600" tabindex="0"></canvas>
+        <canvas id="board" width="200" height="400" tabindex="0"></canvas>
         <div class="controls-hint">
           ← →: move / ↓: soft / Space: hard / Z: left / X: right / A: 180 / Shift/C: hold
         </div>
       </section>
 
+      <!-- Next右配置 -->
       <aside class="right-panel">
         <div class="box">
           <div class="label">Next</div>
-          <div id="next-list"></div>
+          <div id="next-list">
+            <canvas id="next1" width="100" height="100"></canvas>
+            <canvas id="next2" width="100" height="100"></canvas>
+            <canvas id="next3" width="100" height="100"></canvas>
+            <canvas id="next4" width="100" height="100"></canvas>
+            <canvas id="next5" width="100" height="100"></canvas>
+          </div>
         </div>
         <div class="box small">
           <button id="restart">Restart</button>
