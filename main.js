@@ -291,7 +291,8 @@ window.addEventListener("load", () => {
     s.forEach((r,y)=>r.forEach((v,x)=>{if(v)holdCtx.fillRect(ox+x*size,oy+y*size,size-2,size-2)}));
   }
 
-  function drawNext(){/*略*/} // 省略：以前のままでOK
+  function drawNext() {
+    nextCanvases.forEach((ctx2d, i) => { const canvasEl = ctx2d.canvas; ctx2d.clearRect(0, 0, canvasEl.width, canvasEl.height); const type = nextQueue[i]; if (!type) return; ctx2d.fillStyle = COLORS[type]; const shape = PIECES[type]; const size = Math.min(canvasEl.width / shape[0].length, canvasEl.height / shape.length) * 0.6; const ox = (canvasEl.width - size * shape[0].length) / 2; const oy = (canvasEl.height - size * shape.length) / 2; shape.forEach((r, y) => r.forEach((v, x) => { if (v) ctx2d.fillRect(ox + x * size, oy + y * size, size - 2, size - 2); }) ); }); }
   function drawGameOver(){ctx.fillStyle="rgba(0,0,0,0.7)";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#fff";ctx.font="30px sans-serif";ctx.fillText("GAME OVER",25,canvas.height/2);}
   function updateStats(){scoreEl.textContent=score;linesEl.textContent=lines;b2bEl.textContent=b2b;}
 });
