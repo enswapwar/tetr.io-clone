@@ -304,3 +304,78 @@ window.addEventListener("load", () => {
     });
   }
 });
+  // === 回転 ===
+  function rotate(dir = 1) {
+    if (!current) return;
+    const old = current.matrix.map(r => [...r]);
+    current.lastWasRotate = true;
+
+    // 右回転 or 左回転
+    const m = current.matrix;
+    const rotated = m[0].map((_, i) => m.map(r => r[i]));
+    current.matrix = dir > 0 ? rotated.map(r => r.reverse()) : rotated.reverse();
+
+    // 壁蹴り処理（シンプルなSRS風）
+    const kicks = [0, -1, 1, -2, 2];
+    let valid = false;
+    for (const dx of kicks) {
+      current.x += dx;
+      if (!collide(current)) { valid = true; break; }
+      current.x -= dx;
+    }
+
+    if (!valid) current.matrix = old; // 失敗時に戻す
+  }
+
+  // === 180°回転 ===
+  function rotate180() {
+    if (!current) return;
+    const old = current.matrix.map(r => [...r]);
+    current.matrix = current.matrix.map(r => [...r].reverse()).reverse();
+    current.lastWasRotate = true;
+    if (collide(current)) current.matrix = old;
+  }
+
+  // === ソフトドロップ ===
+  function softDrop() {
+    if (!current) return;
+    current.y++;
+    if (collide(current)) {
+      current.y--;
+      fixAndCheck();
+      canHold = true;
+      current = spawn();
+    }
+  }
+
+  // === ハードドロップ ===
+  function hardDrop() {
+    if (!current) return;
+    while (!collide(current)) current.y++;
+    current.y--;
+    fixAndCheck();
+    canHold = true;
+    current = spawn();
+  }
+
+  // === HOLD ===
+  function hold() {
+    if (!canHold) return;
+    if (!holdPiece) {
+      holdPiece = current.type;
+      current = spawn();
+    } else {
+      const temp = holdPiece;
+      holdPiece = current.type;
+      current = {
+        type: temp,
+        matrix: PIECES[temp].map(r => [...r]),
+        x: Math.floor((COLS - PIECES[temp][0].length) / 2),
+        y: -2,
+        lastWasRotate: false
+      };
+    }
+    canHold = false;
+    drawHold();
+  }
+});
