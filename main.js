@@ -1,144 +1,169 @@
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-const ROWS = 20, COLS = 10, BLOCK = 30;
+window.addEventListener("load", () => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
 
-document.addEventListener("keydown", e => {
-  if(["ArrowDown","ArrowUp"," "].includes(e.key)) e.preventDefault();
-});
+  const holdCanvas = document.getElementById("hold");
+  const holdCtx = holdCanvas.getContext("2d");
 
-const SHAPES = {
-  I: [[1,1,1,1]],
-  O: [[1,1],[1,1]],
-  T: [[0,1,0],[1,1,1]],
-  S: [[0,1,1],[1,1,0]],
-  Z: [[1,1,0],[0,1,1]],
-  J: [[1,0,0],[1,1,1]],
-  L: [[0,0,1],[1,1,1]]
-};
+  const nextCanvas = document.getElementById("next");
+  const nextCtx = nextCanvas.getContext("2d");
 
-const COLORS = {
-  I: "#00ffff", O: "#ffff00", T: "#aa00ff",
-  S: "#00ff00", Z: "#ff0000", J: "#0000ff", L: "#ff7f00"
-};
+  const tspinText = document.getElementById("tspin-text");
 
-let field = Array.from({length: ROWS}, () => Array(COLS).fill(0));
-let current = randomPiece(), next = randomPiece(), hold = null;
-let canHold = true, dropCounter = 0, dropInterval = 500, lastTime = 0;
-let tspinText = "", tspinTimer = 0;
+  // スクロール抑制
+  window.addEventListener("keydown", e => {
+    if (["ArrowDown", "ArrowUp", "Space"].includes(e.code)) e.preventDefault();
+  });
 
-function randomPiece() {
-  const types = Object.keys(SHAPES);
-  const t = types[Math.floor(Math.random()*types.length)];
-  return {shape: SHAPES[t].map(r=>[...r]), color: COLORS[t], x:3, y:0, type:t, rotated:false};
-}
+  const COLS = 10, ROWS = 20, BLOCK = 20;
+  canvas.width = COLS * BLOCK;
+  canvas.height = ROWS * BLOCK;
 
-function drawBlock(x,y,color){ctx.fillStyle=color;ctx.fillRect(x*BLOCK,y*BLOCK,BLOCK-1,BLOCK-1);}
-function drawField(){for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++)if(field[y][x])drawBlock(x,y,field[y][x]);}
-function drawPiece(p){p.shape.forEach((r,dy)=>r.forEach((v,dx)=>v&&drawBlock(p.x+dx,p.y+dy,p.color)));}
+  const board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
 
-function collide(p){
-  for(let y=0;y<p.shape.length;y++){
-    for(let x=0;x<p.shape[y].length;x++){
-      if(p.shape[y][x]){
-        let ny=p.y+y,nx=p.x+x;
-        if(nx<0||nx>=COLS||ny>=ROWS||ny>=0&&field[ny]&&field[ny][nx])return true;
+  const COLORS = [
+    null,
+    "#00f0f0", "#0000f0", "#f0a000",
+    "#f0f000", "#00f000", "#a000f0", "#f00000"
+  ];
+
+  // ピース定義（I, J, L, O, S, T, Z）
+  const SHAPES = {
+    I: [[1, 1, 1, 1]],
+    J: [[2, 0, 0], [2, 2, 2]],
+    L: [[0, 0, 3], [3, 3, 3]],
+    O: [[4, 4], [4, 4]],
+    S: [[0, 5, 5], [5, 5, 0]],
+    T: [[0, 6, 0], [6, 6, 6]],
+    Z: [[7, 7, 0], [0, 7, 7]],
+  };
+
+  const PIECES = "IJLOSTZ";
+  let piece = randomPiece();
+
+  function randomPiece() {
+    const type = PIECES[Math.floor(Math.random() * PIECES.length)];
+    return {
+      shape: SHAPES[type],
+      x: 3,
+      y: 0,
+      type,
+    };
+  }
+
+  function drawMatrix(matrix, offset) {
+    matrix.forEach((row, y) => {
+      row.forEach((value, x) => {
+        if (value !== 0) {
+          ctx.fillStyle = COLORS[value];
+          ctx.fillRect((x + offset.x) * BLOCK, (y + offset.y) * BLOCK, BLOCK, BLOCK);
+          ctx.strokeStyle = "#111";
+          ctx.strokeRect((x + offset.x) * BLOCK, (y + offset.y) * BLOCK, BLOCK, BLOCK);
+        }
+      });
+    });
+  }
+
+  function drawBoard() {
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawMatrix(board, { x: 0, y: 0 });
+  }
+
+  function collide(board, piece) {
+    for (let y = 0; y < piece.shape.length; ++y) {
+      for (let x = 0; x < piece.shape[y].length; ++x) {
+        if (
+          piece.shape[y][x] !== 0 &&
+          (board[y + piece.y] && board[y + piece.y][x + piece.x]) !== 0
+        ) {
+          return true;
+        }
       }
     }
+    return false;
   }
-  return false;
-}
 
-function merge(p){p.shape.forEach((r,dy)=>r.forEach((v,dx)=>v&&p.y+dy>=0&&(field[p.y+dy][p.x+dx]=p.color)));}
-
-function rotate(piece,dir){
-  const s = piece.shape;
-  const N = s.length;
-  let newShape = Array.from({length:N},()=>Array(N).fill(0));
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++)newShape[x][N-1-y]=s[y][x];
-  if(dir===-1)newShape=newShape[0].map((_,i)=>newShape.map(r=>r[i])).reverse();
-  const oldX=piece.x, oldY=piece.y;
-  const kicks = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
-  for(const [kx,ky] of kicks){
-    piece.shape=newShape; piece.x=oldX+kx; piece.y=oldY+ky;
-    if(!collide(piece))return true;
+  function merge(board, piece) {
+    piece.shape.forEach((row, y) => {
+      row.forEach((value, x) => {
+        if (value !== 0) {
+          board[y + piece.y][x + piece.x] = value;
+        }
+      });
+    });
   }
-  piece.shape=s; piece.x=oldX; piece.y=oldY;
-  return false;
-}
 
-function rotate180(p){p.shape=p.shape.map(r=>[...r]).reverse().map(r=>r.reverse());}
-
-function drop(){current.y++;if(collide(current)){current.y--;lockPiece();}dropCounter=0;}
-function hardDrop(){while(!collide(current))current.y++;current.y--;lockPiece();dropCounter=0;}
-
-function lockPiece(){
-  merge(current);
-  let cleared = clearLines();
-  checkTspin(current, cleared);
-  resetPiece();
-}
-
-function checkTspin(p, cleared){
-  if(p.type!=="T"||!p.rotated)return;
-  let corners=0;
-  const check=[[0,0],[2,0],[0,2],[2,2]];
-  for(const [dx,dy] of check){
-    const x=p.x+dx,y=p.y+dy;
-    if(y>=ROWS||x<0||x>=COLS||field[y]&&field[y][x])corners++;
+  function rotate(matrix, dir) {
+    const N = matrix.length;
+    const res = Array.from({ length: N }, () => Array(N).fill(0));
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++)
+        res[x][N - 1 - y] = dir > 0 ? matrix[y][x] : matrix[N - 1 - x][y];
+    return res;
   }
-  if(corners>=3){
-    if(cleared===0)tspinText="T-SPIN";
-    else if(cleared===1)tspinText="T-SPIN SINGLE";
-    else if(cleared===2)tspinText="T-SPIN DOUBLE";
-    else if(cleared===3)tspinText="T-SPIN TRIPLE";
-    tspinTimer=120; // 約2秒
+
+  function drop() {
+    piece.y++;
+    if (collide(board, piece)) {
+      piece.y--;
+      merge(board, piece);
+      piece = randomPiece();
+    }
+    dropCounter = 0;
   }
-}
 
-function clearLines(){
-  let before=field.length;
-  field=field.filter(r=>r.some(v=>!v));
-  let cleared=before-field.length;
-  while(field.length<ROWS)field.unshift(Array(COLS).fill(0));
-  return cleared;
-}
+  let dropCounter = 0;
+  let dropInterval = 1000;
+  let lastTime = 0;
 
-function resetPiece(){
-  current=next;next=randomPiece();canHold=true;
-  if(collide(current))field=Array.from({length:ROWS},()=>Array(COLS).fill(0));
-}
-
-function holdPiece(){
-  if(!canHold)return;
-  if(hold){[hold,current]=[current,hold];current.x=3;current.y=0;}
-  else{hold=current;current=next;next=randomPiece();}
-  canHold=false;
-}
-
-document.addEventListener("keydown",e=>{
-  switch(e.key.toLowerCase()){
-    case"arrowleft":current.x--;if(collide(current))current.x++;break;
-    case"arrowright":current.x++;if(collide(current))current.x--;break;
-    case"arrowdown":current.y++;if(collide(current))current.y--;break;
-    case" ":hardDrop();break;
-    case"z":current.rotated=rotate(current,-1);break;
-    case"x":current.rotated=rotate(current,1);break;
-    case"a":current.rotated=true;rotate180(current);break;
-    case"shift":case"c":holdPiece();break;
+  function update(time = 0) {
+    const delta = time - lastTime;
+    lastTime = time;
+    dropCounter += delta;
+    if (dropCounter > dropInterval) drop();
+    drawBoard();
+    drawMatrix(piece.shape, { x: piece.x, y: piece.y });
+    requestAnimationFrame(update);
   }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") {
+      piece.x--;
+      if (collide(board, piece)) piece.x++;
+    } else if (e.key === "ArrowRight") {
+      piece.x++;
+      if (collide(board, piece)) piece.x--;
+    } else if (e.key === "ArrowDown") {
+      drop();
+    } else if (e.key === "z") {
+      piece.shape = rotate(piece.shape, -1);
+      if (collide(board, piece)) piece.shape = rotate(piece.shape, 1);
+    } else if (e.key === "x") {
+      piece.shape = rotate(piece.shape, 1);
+      if (collide(board, piece)) piece.shape = rotate(piece.shape, -1);
+    } else if (e.key === "a") {
+      piece.shape = rotate(piece.shape, 1);
+      piece.shape = rotate(piece.shape, 1);
+      if (collide(board, piece)) piece.shape = rotate(piece.shape, -1);
+    } else if (e.code === "Space") {
+      while (!collide(board, piece)) {
+        piece.y++;
+      }
+      piece.y--;
+      merge(board, piece);
+      piece = randomPiece();
+    }
+  });
+
+  update();
+
+  // T-Spin表示関数（仮）
+  function showTSpin(type) {
+    tspinText.textContent = type;
+    tspinText.style.visibility = "visible";
+    setTimeout(() => tspinText.style.visibility = "hidden", 2000);
+  }
+
+  // showTSpin("T-Spin Double"); ←テストで呼べる
 });
-
-function update(time=0){
-  const delta=time-lastTime;lastTime=time;dropCounter+=delta;
-  if(dropCounter>dropInterval)drop();
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawField();drawPiece(current);
-  if(tspinTimer>0){
-    tspinTimer--;
-    ctx.font="2cm Arial Black";
-    ctx.fillStyle="#fff";
-    ctx.fillText(tspinText,10,550);
-  }
-  requestAnimationFrame(update);
-}
-update();
