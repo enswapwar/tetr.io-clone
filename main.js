@@ -1,4 +1,4 @@
-// === T-Spin精密判定・Lock Delay・先行入力対応＋SRS回転入れ完全対応版 ===
+// === T-Spin精密判定・Lock Delay・先行入力対応＋SRS回転入れ完全対応・spawn修正版 ===
 window.addEventListener("load", () => {
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
@@ -9,7 +9,7 @@ window.addEventListener("load", () => {
   const linesEl = document.getElementById("lines");
   const b2bEl = document.getElementById("b2b");
   const tspinEl = document.getElementById("tspin");
-  const nextCanvases = Array.from(document.querySelectorAll(".next")).map(n => n.getContext("2d")); // nextキュー修正
+  const nextCanvases = Array.from(document.querySelectorAll(".next")).map(n => n.getContext("2d"));
 
   const COLS = 10, ROWS = 20, BLOCK = 30;
   canvas.width = COLS * BLOCK; canvas.height = ROWS * BLOCK;
@@ -31,8 +31,8 @@ window.addEventListener("load", () => {
   let board, current, nextQueue, holdPiece=null, canHold=true;
   let score=0, lines=0, b2b=0, tspinCount=0;
   let dropInterval=800, lastDrop=0, gameOver=false;
-  let lockDelayTimer = null, lockDelayBase = 500, lockDelayExtended = 3000;
-  let keyState = {}; 
+  let lockDelayTimer=null, lockDelayBase=500, lockDelayExtended=3000;
+  let keyState={};
 
   restart();
 
@@ -42,7 +42,7 @@ window.addEventListener("load", () => {
     current = spawn();
     score=0; lines=0; b2b=0; tspinCount=0;
     gameOver=false; canHold=true;
-    updateStats(); draw();
+    updateStats(); draw(); drawNext();
   }
 
   document.getElementById("restart").onclick = restart;
@@ -54,7 +54,7 @@ window.addEventListener("load", () => {
   document.addEventListener("keyup",e=>{ keyState[e.key]=false; });
 
   function processInput(){
-    if(gameOver) return;
+    if(gameOver || !current) return;
     if(keyState["ArrowLeft"]) move(-1);
     if(keyState["ArrowRight"]) move(1);
     if(keyState["ArrowDown"]) softDrop();
@@ -67,16 +67,17 @@ window.addEventListener("load", () => {
 
   function update(time=0){
     processInput();
-    if(!gameOver && time-lastDrop>dropInterval){
-      lastDrop=time; drop();
+    if(!gameOver && current){
+      if(time-lastDrop>dropInterval){ lastDrop=time; drop(); }
+      draw(); // ← ここを追加、描画を常時更新
     }
     requestAnimationFrame(update);
   }
   requestAnimationFrame(update);
 
   function genBag(){
-    const bag = Object.keys(PIECES); const q=[];
-    while(bag.length){ q.push(bag.splice(Math.floor(Math.random()*bag.length),1)[0]); }
+    const bag = Object.keys(PIECES), q=[];
+    while(bag.length) q.push(bag.splice(Math.floor(Math.random()*bag.length),1)[0]);
     return q;
   }
   function ensureQueue(){ while(nextQueue.length<7) nextQueue.push(...genBag()); }
@@ -105,8 +106,7 @@ window.addEventListener("load", () => {
   function startLockDelay(){
     clearTimeout(lockDelayTimer);
     lockDelayTimer=setTimeout(()=>{
-      fixAndCheck();
-      canHold=true;
+      fixAndCheck(); canHold=true;
       current=spawn();
     },lockDelayBase);
   }
@@ -114,8 +114,7 @@ window.addEventListener("load", () => {
   function extendLockDelay(){
     clearTimeout(lockDelayTimer);
     lockDelayTimer=setTimeout(()=>{
-      fixAndCheck();
-      canHold=true;
+      fixAndCheck(); canHold=true;
       current=spawn();
     },lockDelayExtended);
   }
@@ -129,7 +128,6 @@ window.addEventListener("load", () => {
 
   function isOnGround(p){ p.y++; const hit=collide(p); p.y--; return hit; }
 
-  // === SRS回転入れ（壁蹴り／床蹴り対応） ===
   function rotate(dir=1){
     if(!current) return;
     const old=current.matrix.map(r=>[...r]);
@@ -138,20 +136,14 @@ window.addEventListener("load", () => {
     const rotated=m[0].map((_,i)=>m.map(r=>r[i]));
     current.matrix=dir>0?rotated.map(r=>r.reverse()):rotated.reverse();
 
-    const kicks=[
-      [0,0],[1,0],[-1,0],[0,-1],[0,1],
-      [2,0],[-2,0],[0,-2],[0,2]
-    ];
+    const kicks=[[0,0],[1,0],[-1,0],[0,-1],[0,1],[2,0],[-2,0],[0,-2],[0,2]];
     let success=false;
     for(const [kx,ky] of kicks){
       current.x=oldX+kx; current.y=oldY+ky;
       if(!collide(current)){ success=true; break; }
     }
-    if(success){
-      current.rotated=true;
-      current.lastRotate=true; // T-Spin検出の一時フラグ
-      extendLockDelay();
-    } else { current.matrix=old; current.x=oldX; current.y=oldY; current.lastRotate=false; }
+    if(success){ current.rotated=true; current.lastRotate=true; extendLockDelay(); }
+    else { current.matrix=old; current.x=oldX; current.y=oldY; current.lastRotate=false; }
   }
 
   function rotate180(){
@@ -165,10 +157,7 @@ window.addEventListener("load", () => {
   function softDrop(){
     if(!current) return;
     current.y++;
-    if(collide(current)){
-      current.y--;
-      if(!lockDelayTimer) startLockDelay();
-    }
+    if(collide(current)){ current.y--; if(!lockDelayTimer) startLockDelay(); }
   }
 
   function hardDrop(){
@@ -181,14 +170,11 @@ window.addEventListener("load", () => {
   function drop(){
     if(!current) return;
     current.y++;
-    if(collide(current)){
-      current.y--;
-      if(!lockDelayTimer) startLockDelay();
-    }
+    if(collide(current)){ current.y--; if(!lockDelayTimer) startLockDelay(); }
   }
 
-  // === 固定処理・T-Spinバグ修正 ===
   function fixAndCheck(){
+    if(!current) return;
     clearTimeout(lockDelayTimer);
     for(let y=0;y<current.matrix.length;y++)
       for(let x=0;x<current.matrix[y].length;x++)
@@ -200,10 +186,10 @@ window.addEventListener("load", () => {
       if(board[y].every(v=>v)){ board.splice(y,1); board.unshift(Array(COLS).fill(null)); linesCleared++; y++; }
     }
 
-    const tspin = detectTSpin(current, linesCleared);
+    const tspin=detectTSpin(current,linesCleared);
     if(tspin) showTSpinMessage(tspin);
     if(linesCleared>0){ score+=linesCleared*100; lines+=linesCleared; }
-    current.rotated=false; current.lastRotate=false; // ← バグ防止：一度発動後にリセット
+    current.rotated=false; current.lastRotate=false;
     updateStats();
   }
 
@@ -226,8 +212,7 @@ window.addEventListener("load", () => {
   }
 
   function showTSpinMessage(text){
-    tspinCount++;
-    tspinEl.textContent=tspinCount;
+    tspinCount++; tspinEl.textContent=tspinCount;
     tspinMsg.textContent=text;
     tspinMsg.style.display="block";
     tspinMsg.style.fontSize="0.5cm";
@@ -235,7 +220,7 @@ window.addEventListener("load", () => {
   }
 
   function hold(){
-    if(!canHold) return;
+    if(!canHold||!current) return;
     if(!holdPiece){ holdPiece=current.type; current=spawn(); }
     else{
       const tmp=holdPiece; holdPiece=current.type;
@@ -302,6 +287,15 @@ window.addEventListener("load", () => {
     });
   }
 
-  function drawGameOver(){ctx.fillStyle="rgba(0,0,0,0.7)";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#fff";ctx.font="30px sans-serif";ctx.fillText("GAME OVER",25,canvas.height/2);}
-  function updateStats(){scoreEl.textContent=score;linesEl.textContent=lines;b2bEl.textContent=b2b;}
+  function drawGameOver(){
+    ctx.fillStyle="rgba(0,0,0,0.7)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#fff";
+    ctx.font="30px sans-serif";
+    ctx.fillText("GAME OVER",25,canvas.height/2);
+  }
+
+  function updateStats(){
+    scoreEl.textContent=score; linesEl.textContent=lines; b2bEl.textContent=b2b;
+  }
 });
