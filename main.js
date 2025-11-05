@@ -1,4 +1,4 @@
-// === T-Spin精密判定・Lock Delay・先行入力対応版 ===
+// === T-Spin精密判定・Lock Delay・先行入力対応＋SRS回転入れ完全対応版 ===
 window.addEventListener("load", () => {
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
@@ -9,6 +9,7 @@ window.addEventListener("load", () => {
   const linesEl = document.getElementById("lines");
   const b2bEl = document.getElementById("b2b");
   const tspinEl = document.getElementById("tspin");
+  const nextCanvases = Array.from(document.querySelectorAll(".next")).map(n => n.getContext("2d")); // nextキュー修正
 
   const COLS = 10, ROWS = 20, BLOCK = 30;
   canvas.width = COLS * BLOCK; canvas.height = ROWS * BLOCK;
@@ -31,7 +32,7 @@ window.addEventListener("load", () => {
   let score=0, lines=0, b2b=0, tspinCount=0;
   let dropInterval=800, lastDrop=0, gameOver=false;
   let lockDelayTimer = null, lockDelayBase = 500, lockDelayExtended = 3000;
-  let keyState = {}; // 先行入力保持
+  let keyState = {}; 
 
   restart();
 
@@ -46,7 +47,6 @@ window.addEventListener("load", () => {
 
   document.getElementById("restart").onclick = restart;
 
-  // === 入力管理 ===
   document.addEventListener("keydown",e=>{
     if(["ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
     keyState[e.key]=true;
@@ -74,13 +74,11 @@ window.addEventListener("load", () => {
   }
   requestAnimationFrame(update);
 
-  // === 7Bag ===
   function genBag(){
     const bag = Object.keys(PIECES); const q=[];
     while(bag.length){ q.push(bag.splice(Math.floor(Math.random()*bag.length),1)[0]); }
     return q;
   }
-
   function ensureQueue(){ while(nextQueue.length<7) nextQueue.push(...genBag()); }
 
   function spawn(){
@@ -88,7 +86,7 @@ window.addEventListener("load", () => {
     const type = nextQueue.shift();
     drawNext();
     const matrix = PIECES[type].map(r=>[...r]);
-    const piece = {type, matrix, x:Math.floor((COLS-matrix[0].length)/2), y:-2, rotated:false, lockStart:null};
+    const piece = {type, matrix, x:Math.floor((COLS-matrix[0].length)/2), y:-2, rotated:false, lastRotate:false};
     if(collide(piece)){ gameOver=true; drawGameOver(); return null; }
     return piece;
   }
@@ -104,7 +102,6 @@ window.addEventListener("load", () => {
     return false;
   }
 
-  // === Lock Delay機構 ===
   function startLockDelay(){
     clearTimeout(lockDelayTimer);
     lockDelayTimer=setTimeout(()=>{
@@ -123,7 +120,6 @@ window.addEventListener("load", () => {
     },lockDelayExtended);
   }
 
-  // === 移動 ===
   function move(dir){
     if(!current) return;
     current.x+=dir;
@@ -133,35 +129,39 @@ window.addEventListener("load", () => {
 
   function isOnGround(p){ p.y++; const hit=collide(p); p.y--; return hit; }
 
-  // === 回転 ===
+  // === SRS回転入れ（壁蹴り／床蹴り対応） ===
   function rotate(dir=1){
     if(!current) return;
     const old=current.matrix.map(r=>[...r]);
+    const oldX=current.x, oldY=current.y;
     const m=current.matrix;
     const rotated=m[0].map((_,i)=>m.map(r=>r[i]));
     current.matrix=dir>0?rotated.map(r=>r.reverse()):rotated.reverse();
-    const kicks=[0,-1,1,-2,2];
-    let valid=false;
-    for(const dx of kicks){
-      current.x+=dx;
-      if(!collide(current)){ valid=true; break; }
-      current.x-=dx;
+
+    const kicks=[
+      [0,0],[1,0],[-1,0],[0,-1],[0,1],
+      [2,0],[-2,0],[0,-2],[0,2]
+    ];
+    let success=false;
+    for(const [kx,ky] of kicks){
+      current.x=oldX+kx; current.y=oldY+ky;
+      if(!collide(current)){ success=true; break; }
     }
-    if(valid){
+    if(success){
       current.rotated=true;
-      extendLockDelay(); // 回転で延長
-    } else current.matrix=old;
+      current.lastRotate=true; // T-Spin検出の一時フラグ
+      extendLockDelay();
+    } else { current.matrix=old; current.x=oldX; current.y=oldY; current.lastRotate=false; }
   }
 
   function rotate180(){
     if(!current) return;
     const old=current.matrix.map(r=>[...r]);
     current.matrix=current.matrix.map(r=>[...r].reverse()).reverse();
-    if(!collide(current)){ current.rotated=true; extendLockDelay(); }
+    if(!collide(current)){ current.rotated=true; current.lastRotate=true; extendLockDelay(); }
     else current.matrix=old;
   }
 
-  // === ドロップ ===
   function softDrop(){
     if(!current) return;
     current.y++;
@@ -187,7 +187,7 @@ window.addEventListener("load", () => {
     }
   }
 
-  // === 固定処理 ===
+  // === 固定処理・T-Spinバグ修正 ===
   function fixAndCheck(){
     clearTimeout(lockDelayTimer);
     for(let y=0;y<current.matrix.length;y++)
@@ -200,15 +200,15 @@ window.addEventListener("load", () => {
       if(board[y].every(v=>v)){ board.splice(y,1); board.unshift(Array(COLS).fill(null)); linesCleared++; y++; }
     }
 
-    const tspin=detectTSpin(current,linesCleared);
+    const tspin = detectTSpin(current, linesCleared);
     if(tspin) showTSpinMessage(tspin);
     if(linesCleared>0){ score+=linesCleared*100; lines+=linesCleared; }
+    current.rotated=false; current.lastRotate=false; // ← バグ防止：一度発動後にリセット
     updateStats();
   }
 
-  // === T-Spin判定 ===
   function detectTSpin(p,linesCleared){
-    if(p.type!=="T"||!p.rotated) return null;
+    if(p.type!=="T"||!p.lastRotate) return null;
     const cx=p.x+1, cy=p.y+1;
     const corners=[[0,0],[0,2],[2,0],[2,2]];
     let occupied=0;
@@ -234,7 +234,6 @@ window.addEventListener("load", () => {
     setTimeout(()=>{ tspinMsg.style.display="none"; },2000);
   }
 
-  // === HOLD ===
   function hold(){
     if(!canHold) return;
     if(!holdPiece){ holdPiece=current.type; current=spawn(); }
@@ -245,7 +244,6 @@ window.addEventListener("load", () => {
     canHold=false; drawHold();
   }
 
-  // === 描画 ===
   function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     drawBoard();
@@ -291,8 +289,19 @@ window.addEventListener("load", () => {
     s.forEach((r,y)=>r.forEach((v,x)=>{if(v)holdCtx.fillRect(ox+x*size,oy+y*size,size-2,size-2)}));
   }
 
-  function drawNext() {
-    nextCanvases.forEach((ctx2d, i) => { const canvasEl = ctx2d.canvas; ctx2d.clearRect(0, 0, canvasEl.width, canvasEl.height); const type = nextQueue[i]; if (!type) return; ctx2d.fillStyle = COLORS[type]; const shape = PIECES[type]; const size = Math.min(canvasEl.width / shape[0].length, canvasEl.height / shape.length) * 0.6; const ox = (canvasEl.width - size * shape[0].length) / 2; const oy = (canvasEl.height - size * shape.length) / 2; shape.forEach((r, y) => r.forEach((v, x) => { if (v) ctx2d.fillRect(ox + x * size, oy + y * size, size - 2, size - 2); }) ); }); }
+  function drawNext(){
+    nextCanvases.forEach((ctx2d,i)=>{
+      const c=ctx2d.canvas;
+      ctx2d.clearRect(0,0,c.width,c.height);
+      const type=nextQueue[i]; if(!type) return;
+      ctx2d.fillStyle=COLORS[type];
+      const s=PIECES[type];
+      const size=Math.min(c.width/s[0].length,c.height/s.length)*0.6;
+      const ox=(c.width-size*s[0].length)/2, oy=(c.height-size*s.length)/2;
+      s.forEach((r,y)=>r.forEach((v,x)=>{if(v)ctx2d.fillRect(ox+x*size,oy+y*size,size-2,size-2)}));
+    });
+  }
+
   function drawGameOver(){ctx.fillStyle="rgba(0,0,0,0.7)";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#fff";ctx.font="30px sans-serif";ctx.fillText("GAME OVER",25,canvas.height/2);}
   function updateStats(){scoreEl.textContent=score;linesEl.textContent=lines;b2bEl.textContent=b2b;}
 });
