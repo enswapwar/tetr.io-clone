@@ -172,7 +172,6 @@ window.addEventListener("load", () => {
           ctx.fillRect((ghost.x + x) * BLOCK, (ghost.y + y) * BLOCK, BLOCK - 1, BLOCK - 1);
   }
 
-  // === HOLD描画 ===
   function drawHold() {
     holdCtx.clearRect(0, 0, holdCanvas.width, holdCanvas.height);
     if (!holdPiece) return;
@@ -303,19 +302,15 @@ window.addEventListener("load", () => {
       );
     });
   }
-});
+
   // === 回転 ===
   function rotate(dir = 1) {
     if (!current) return;
     const old = current.matrix.map(r => [...r]);
     current.lastWasRotate = true;
-
-    // 右回転 or 左回転
     const m = current.matrix;
     const rotated = m[0].map((_, i) => m.map(r => r[i]));
     current.matrix = dir > 0 ? rotated.map(r => r.reverse()) : rotated.reverse();
-
-    // 壁蹴り処理（シンプルなSRS風）
     const kicks = [0, -1, 1, -2, 2];
     let valid = false;
     for (const dx of kicks) {
@@ -323,8 +318,7 @@ window.addEventListener("load", () => {
       if (!collide(current)) { valid = true; break; }
       current.x -= dx;
     }
-
-    if (!valid) current.matrix = old; // 失敗時に戻す
+    if (!valid) current.matrix = old;
   }
 
   // === 180°回転 ===
@@ -378,4 +372,5 @@ window.addEventListener("load", () => {
     canHold = false;
     drawHold();
   }
-});
+
+}); // ←これが最後の1個だけ
