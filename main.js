@@ -1,4 +1,4 @@
-// === 死亡判定・ゴーストピース追加版 ===
+// === 死亡判定・ゴーストピース・Hold描画・T-spin表示対応 ===
 window.addEventListener("load", () => {
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
@@ -50,7 +50,7 @@ window.addEventListener("load", () => {
   let current, nextQueue, holdPiece = null, canHold = true;
   let score = 0, lines = 0, b2b = 0, tspinCount = 0;
   let dropInterval = 800, lastDrop = 0;
-  let gameOver = false; // ←死亡状態
+  let gameOver = false;
 
   restart();
 
@@ -70,7 +70,7 @@ window.addEventListener("load", () => {
 
   document.addEventListener("keydown", e => {
     if (["ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
-    if (gameOver) return; // 死亡後無効
+    if (gameOver) return;
     switch (e.key) {
       case "ArrowLeft": move(-1); break;
       case "ArrowRight": move(1); break;
@@ -116,7 +116,6 @@ window.addEventListener("load", () => {
     const matrix = PIECES[type].map(r => [...r]);
     const piece = { type, matrix, x: Math.floor((COLS - matrix[0].length) / 2), y: -2, lastWasRotate: false };
     if (collide(piece)) {
-      // === GAME OVER ===
       gameOver = true;
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -132,7 +131,7 @@ window.addEventListener("load", () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawBoard();
     if (current) {
-      drawGhost(current); // ゴースト
+      drawGhost(current);
       drawPiece(current);
     }
     drawHold();
@@ -162,7 +161,6 @@ window.addEventListener("load", () => {
           ctx.fillRect((p.x + x) * BLOCK, (p.y + y) * BLOCK, BLOCK - 1, BLOCK - 1);
   }
 
-  // === ゴーストピース描画 ===
   function drawGhost(p) {
     const ghost = { ...p, y: p.y };
     while (!collide(ghost)) ghost.y++;
@@ -172,6 +170,22 @@ window.addEventListener("load", () => {
       for (let x = 0; x < ghost.matrix[y].length; x++)
         if (ghost.matrix[y][x] && ghost.y + y >= 0)
           ctx.fillRect((ghost.x + x) * BLOCK, (ghost.y + y) * BLOCK, BLOCK - 1, BLOCK - 1);
+  }
+
+  // === HOLD描画 ===
+  function drawHold() {
+    holdCtx.clearRect(0, 0, holdCanvas.width, holdCanvas.height);
+    if (!holdPiece) return;
+    holdCtx.fillStyle = COLORS[holdPiece];
+    const shape = PIECES[holdPiece];
+    const size = Math.min(holdCanvas.width / shape[0].length, holdCanvas.height / shape.length) * 0.6;
+    const ox = (holdCanvas.width - size * shape[0].length) / 2;
+    const oy = (holdCanvas.height - size * shape.length) / 2;
+    shape.forEach((r, y) =>
+      r.forEach((v, x) => {
+        if (v) holdCtx.fillRect(ox + x * size, oy + y * size, size - 2, size - 2);
+      })
+    );
   }
 
   function collide(p) {
@@ -251,6 +265,7 @@ window.addEventListener("load", () => {
     tspinEl.textContent = tspinCount;
     tspinMsg.textContent = text;
     tspinMsg.style.display = "block";
+    tspinMsg.style.fontSize = "2cm";
     setTimeout(() => {
       tspinMsg.style.display = "none";
       tspinMsg.textContent = "";
