@@ -9,10 +9,15 @@ window.addEventListener("load", () => {
   const linesEl = document.getElementById("lines");
   const b2bEl = document.getElementById("b2b");
   const tspinEl = document.getElementById("tspin");
-  const nextCanvases = Array.from(document.querySelectorAll(".next")).map(n => n.getContext("2d"));
+
+  // ← 修正版：明示的に next1〜5 を取得
+  const nextCanvases = [
+    "next1", "next2", "next3", "next4", "next5"
+  ].map(id => document.getElementById(id).getContext("2d"));
 
   const COLS = 10, ROWS = 20, BLOCK = 30;
-  canvas.width = COLS * BLOCK; canvas.height = ROWS * BLOCK;
+  canvas.width = COLS * BLOCK;
+  canvas.height = ROWS * BLOCK;
 
   const PIECES = {
     I: [[1,1,1,1]],
@@ -69,7 +74,7 @@ window.addEventListener("load", () => {
     processInput();
     if(!gameOver && current){
       if(time-lastDrop>dropInterval){ lastDrop=time; drop(); }
-      draw(); // ← ここを追加、描画を常時更新
+      draw();
     }
     requestAnimationFrame(update);
   }
@@ -212,7 +217,8 @@ window.addEventListener("load", () => {
   }
 
   function showTSpinMessage(text){
-    tspinCount++; tspinEl.textContent=tspinCount;
+    tspinCount++;
+    tspinEl.textContent=tspinCount;
     tspinMsg.textContent=text;
     tspinMsg.style.display="block";
     tspinMsg.style.fontSize="0.5cm";
@@ -237,7 +243,8 @@ window.addEventListener("load", () => {
   }
 
   function drawBoard(){
-    ctx.fillStyle="#071018"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#071018";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
     for(let y=0;y<ROWS;y++)
       for(let x=0;x<COLS;x++)
         if(board[y][x]){
@@ -269,9 +276,12 @@ window.addEventListener("load", () => {
     holdCtx.clearRect(0,0,holdCanvas.width,holdCanvas.height);
     if(!holdPiece) return;
     holdCtx.fillStyle=COLORS[holdPiece];
-    const s=PIECES[holdPiece]; const size=holdCanvas.width/4;
+    const s=PIECES[holdPiece];
+    const size=holdCanvas.width/4;
     const ox=(holdCanvas.width-size*s[0].length)/2, oy=(holdCanvas.height-size*s.length)/2;
-    s.forEach((r,y)=>r.forEach((v,x)=>{if(v)holdCtx.fillRect(ox+x*size,oy+y*size,size-2,size-2)}));
+    s.forEach((r,y)=>r.forEach((v,x)=>{
+      if(v) holdCtx.fillRect(ox+x*size,oy+y*size,size-2,size-2);
+    }));
   }
 
   function drawNext(){
@@ -283,7 +293,9 @@ window.addEventListener("load", () => {
       const s=PIECES[type];
       const size=Math.min(c.width/s[0].length,c.height/s.length)*0.6;
       const ox=(c.width-size*s[0].length)/2, oy=(c.height-size*s.length)/2;
-      s.forEach((r,y)=>r.forEach((v,x)=>{if(v)ctx2d.fillRect(ox+x*size,oy+y*size,size-2,size-2)}));
+      s.forEach((r,y)=>r.forEach((v,x)=>{
+        if(v) ctx2d.fillRect(ox+x*size,oy+y*size,size-2,size-2);
+      }));
     });
   }
 
@@ -296,6 +308,8 @@ window.addEventListener("load", () => {
   }
 
   function updateStats(){
-    scoreEl.textContent=score; linesEl.textContent=lines; b2bEl.textContent=b2b;
+    scoreEl.textContent=score;
+    linesEl.textContent=lines;
+    b2bEl.textContent=b2b;
   }
 });
