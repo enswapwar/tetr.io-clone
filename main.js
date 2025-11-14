@@ -1,4 +1,4 @@
-// === T-Spin精密判定・Lock Delay・先行入力対応＋SRS回転入れ完全対応・spawn修正版 ===
+// === T-Spin精密判定・Lock Delay完全対応（1秒ロック＋回転で最大3秒延長） ===
 window.addEventListener("load", () => {
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
@@ -10,10 +10,14 @@ window.addEventListener("load", () => {
   const b2bEl = document.getElementById("b2b");
   const tspinEl = document.getElementById("tspin");
 
-  // ← 修正版：明示的に next1〜5 を取得
+  // Nextキャンバス取得
   const nextCanvases = [
-    "next1", "next2", "next3", "next4", "next5"
-  ].map(id => document.getElementById(id).getContext("2d"));
+    document.getElementById("next1"),
+    document.getElementById("next2"),
+    document.getElementById("next3"),
+    document.getElementById("next4"),
+    document.getElementById("next5")
+  ].map(c => c.getContext("2d"));
 
   const COLS = 10, ROWS = 20, BLOCK = 30;
   canvas.width = COLS * BLOCK;
@@ -36,7 +40,8 @@ window.addEventListener("load", () => {
   let board, current, nextQueue, holdPiece=null, canHold=true;
   let score=0, lines=0, b2b=0, tspinCount=0;
   let dropInterval=800, lastDrop=0, gameOver=false;
-  let lockDelayTimer=null, lockDelayBase=500, lockDelayExtended=3000;
+  let lockTimer=null, lockStartTime=null, lockExtended=false;
+  const lockBase=1000, lockMax=3000;
   let keyState={};
 
   restart();
@@ -47,6 +52,7 @@ window.addEventListener("load", () => {
     current = spawn();
     score=0; lines=0; b2b=0; tspinCount=0;
     gameOver=false; canHold=true;
+    lockTimer=null; lockStartTime=null; lockExtended=false;
     updateStats(); draw(); drawNext();
   }
 
@@ -108,30 +114,13 @@ window.addEventListener("load", () => {
     return false;
   }
 
-  function startLockDelay(){
-    clearTimeout(lockDelayTimer);
-    lockDelayTimer=setTimeout(()=>{
-      fixAndCheck(); canHold=true;
-      current=spawn();
-    },lockDelayBase);
-  }
-
-  function extendLockDelay(){
-    clearTimeout(lockDelayTimer);
-    lockDelayTimer=setTimeout(()=>{
-      fixAndCheck(); canHold=true;
-      current=spawn();
-    },lockDelayExtended);
-  }
+  function isOnGround(p){ p.y++; const hit=collide(p); p.y--; return hit; }
 
   function move(dir){
     if(!current) return;
     current.x+=dir;
     if(collide(current)) current.x-=dir;
-    else if(isOnGround(current)) extendLockDelay();
   }
-
-  function isOnGround(p){ p.y++; const hit=collide(p); p.y--; return hit; }
 
   function rotate(dir=1){
     if(!current) return;
@@ -141,46 +130,79 @@ window.addEventListener("load", () => {
     const rotated=m[0].map((_,i)=>m.map(r=>r[i]));
     current.matrix=dir>0?rotated.map(r=>r.reverse()):rotated.reverse();
 
-    const kicks=[[0,0],[1,0],[-1,0],[0,-1],[0,1],[2,0],[-2,0],[0,-2],[0,2]];
+    const kicks=[[0,0],[1,0],[-1,0],[0,-1],[0,1]];
     let success=false;
     for(const [kx,ky] of kicks){
       current.x=oldX+kx; current.y=oldY+ky;
       if(!collide(current)){ success=true; break; }
     }
-    if(success){ current.rotated=true; current.lastRotate=true; extendLockDelay(); }
-    else { current.matrix=old; current.x=oldX; current.y=oldY; current.lastRotate=false; }
+    if(success){
+      current.rotated=true; current.lastRotate=true;
+      // 回転中に地面に触れていたらロック時間を延長（最大3秒）
+      if(isOnGround(current) && lockStartTime && !lockExtended){
+        const elapsed=performance.now()-lockStartTime;
+        const remaining=lockMax-elapsed;
+        if(remaining>0){
+          clearTimeout(lockTimer);
+          lockTimer=setTimeout(()=>{ lockPiece(); },remaining);
+          lockExtended=true;
+        }
+      }
+    } else {
+      current.matrix=old; current.x=oldX; current.y=oldY; current.lastRotate=false;
+    }
   }
 
   function rotate180(){
     if(!current) return;
     const old=current.matrix.map(r=>[...r]);
     current.matrix=current.matrix.map(r=>[...r].reverse()).reverse();
-    if(!collide(current)){ current.rotated=true; current.lastRotate=true; extendLockDelay(); }
-    else current.matrix=old;
+    if(collide(current)) current.matrix=old;
   }
 
   function softDrop(){
     if(!current) return;
     current.y++;
-    if(collide(current)){ current.y--; if(!lockDelayTimer) startLockDelay(); }
+    if(collide(current)){
+      current.y--;
+      if(!lockStartTime && isOnGround(current)) startLockTimer();
+    }
   }
 
   function hardDrop(){
     if(!current) return;
     while(!collide(current)) current.y++;
     current.y--;
-    fixAndCheck(); canHold=true; current=spawn();
+    lockPiece();
   }
 
   function drop(){
     if(!current) return;
     current.y++;
-    if(collide(current)){ current.y--; if(!lockDelayTimer) startLockDelay(); }
+    if(collide(current)){
+      current.y--;
+      if(!lockStartTime && isOnGround(current)) startLockTimer();
+    }
+  }
+
+  function startLockTimer(){
+    lockStartTime=performance.now();
+    lockTimer=setTimeout(()=>{ lockPiece(); },lockBase);
+    lockExtended=false;
+  }
+
+  function lockPiece(){
+    clearTimeout(lockTimer);
+    lockTimer=null;
+    lockStartTime=null;
+    lockExtended=false;
+    fixAndCheck();
+    canHold=true;
+    current=spawn();
   }
 
   function fixAndCheck(){
     if(!current) return;
-    clearTimeout(lockDelayTimer);
     for(let y=0;y<current.matrix.length;y++)
       for(let x=0;x<current.matrix[y].length;x++)
         if(current.matrix[y][x] && current.y+y>=0)
@@ -217,8 +239,7 @@ window.addEventListener("load", () => {
   }
 
   function showTSpinMessage(text){
-    tspinCount++;
-    tspinEl.textContent=tspinCount;
+    tspinCount++; tspinEl.textContent=tspinCount;
     tspinMsg.textContent=text;
     tspinMsg.style.display="block";
     tspinMsg.style.fontSize="0.5cm";
@@ -243,8 +264,7 @@ window.addEventListener("load", () => {
   }
 
   function drawBoard(){
-    ctx.fillStyle="#071018";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#071018"; ctx.fillRect(0,0,canvas.width,canvas.height);
     for(let y=0;y<ROWS;y++)
       for(let x=0;x<COLS;x++)
         if(board[y][x]){
@@ -276,12 +296,9 @@ window.addEventListener("load", () => {
     holdCtx.clearRect(0,0,holdCanvas.width,holdCanvas.height);
     if(!holdPiece) return;
     holdCtx.fillStyle=COLORS[holdPiece];
-    const s=PIECES[holdPiece];
-    const size=holdCanvas.width/4;
+    const s=PIECES[holdPiece]; const size=holdCanvas.width/4;
     const ox=(holdCanvas.width-size*s[0].length)/2, oy=(holdCanvas.height-size*s.length)/2;
-    s.forEach((r,y)=>r.forEach((v,x)=>{
-      if(v) holdCtx.fillRect(ox+x*size,oy+y*size,size-2,size-2);
-    }));
+    s.forEach((r,y)=>r.forEach((v,x)=>{if(v)holdCtx.fillRect(ox+x*size,oy+y*size,size-2,size-2)}));
   }
 
   function drawNext(){
@@ -293,9 +310,7 @@ window.addEventListener("load", () => {
       const s=PIECES[type];
       const size=Math.min(c.width/s[0].length,c.height/s.length)*0.6;
       const ox=(c.width-size*s[0].length)/2, oy=(c.height-size*s.length)/2;
-      s.forEach((r,y)=>r.forEach((v,x)=>{
-        if(v) ctx2d.fillRect(ox+x*size,oy+y*size,size-2,size-2);
-      }));
+      s.forEach((r,y)=>r.forEach((v,x)=>{if(v)ctx2d.fillRect(ox+x*size,oy+y*size,size-2,size-2)}));
     });
   }
 
@@ -308,8 +323,6 @@ window.addEventListener("load", () => {
   }
 
   function updateStats(){
-    scoreEl.textContent=score;
-    linesEl.textContent=lines;
-    b2bEl.textContent=b2b;
+    scoreEl.textContent=score; linesEl.textContent=lines; b2bEl.textContent=b2b;
   }
 });
